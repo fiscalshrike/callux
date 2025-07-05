@@ -4,9 +4,12 @@ use crate::config::Config;
 use crate::error::{CalendarError, Result};
 use crate::output::CalendarEvent;
 use chrono::{DateTime, Local, TimeZone, Utc};
-use google_calendar3::{CalendarHub, api::{CalendarListEntry, Event}};
-use google_calendar3::hyper::client::HttpConnector;
 use google_calendar3::hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
+use google_calendar3::{
+    CalendarHub,
+    api::{CalendarListEntry, Event},
+};
+use hyper_util::client::legacy::connect::HttpConnector;
 
 pub struct CalendarClient {
     config: Config,
@@ -26,24 +29,30 @@ impl CalendarClient {
         }
     }
 
-    pub async fn get_events(&self, days_ahead: i64, limit: Option<usize>) -> Result<Vec<CalendarEvent>> {
-        let enabled_calendars: Vec<_> = self.config.calendars
+    pub async fn get_events(
+        &self,
+        days_ahead: i64,
+        limit: Option<usize>,
+    ) -> Result<Vec<CalendarEvent>> {
+        let enabled_calendars: Vec<_> = self
+            .config
+            .calendars
             .iter()
             .filter(|cal| cal.enabled)
             .collect();
 
-        let calendar_ids: Vec<String> = enabled_calendars
-            .iter()
-            .map(|cal| cal.id.clone())
-            .collect();
+        let calendar_ids: Vec<String> =
+            enabled_calendars.iter().map(|cal| cal.id.clone()).collect();
 
         let cache_key = self.cache.generate_key(&calendar_ids, days_ahead);
-        
+
         if let Some(cached_events) = self.cache.get(&cache_key).await {
             return Ok(cached_events);
         }
 
-        let events = self.fetch_events_from_api(&calendar_ids, days_ahead).await?;
+        let events = self
+            .fetch_events_from_api(&calendar_ids, days_ahead)
+            .await?;
         self.cache.set(cache_key, events.clone()).await;
 
         let limited_events = if let Some(limit) = limit {
@@ -55,17 +64,25 @@ impl CalendarClient {
         Ok(limited_events)
     }
 
-    async fn fetch_events_from_api(&self, calendar_ids: &[String], days_ahead: i64) -> Result<Vec<CalendarEvent>> {
+    async fn fetch_events_from_api(
+        &self,
+        calendar_ids: &[String],
+        days_ahead: i64,
+    ) -> Result<Vec<CalendarEvent>> {
         let authenticator = self.auth_manager.get_authenticator().await?;
-        
+
         let https = HttpsConnectorBuilder::new()
             .with_native_roots()
-            .map_err(|e| CalendarError::ApiError(format!("Failed to build HTTPS connector: {}", e)))?
+            .map_err(|e| {
+                CalendarError::ApiError(format!("Failed to build HTTPS connector: {}", e))
+            })?
             .https_or_http()
             .enable_http1()
             .build();
-        
-        let client = hyper::Client::builder().build::<_, hyper::Body>(https);
+
+        let client =
+            hyper_util::client::legacy::Client::builder(hyper_util::rt::TokioExecutor::new())
+                .build(https);
         let hub = CalendarHub::new(client, authenticator);
 
         let now = Utc::now();
@@ -74,10 +91,16 @@ impl CalendarClient {
         let mut all_events = Vec::new();
 
         for calendar_id in calendar_ids {
-            match self.fetch_calendar_events(&hub, calendar_id, &now, &end_time).await {
+            match self
+                .fetch_calendar_events(&hub, calendar_id, &now, &end_time)
+                .await
+            {
                 Ok(events) => all_events.extend(events),
                 Err(e) => {
-                    eprintln!("Warning: Failed to fetch events from calendar {}: {}", calendar_id, e);
+                    eprintln!(
+                        "Warning: Failed to fetch events from calendar {}: {}",
+                        calendar_id, e
+                    );
                 }
             }
         }
@@ -105,10 +128,17 @@ impl CalendarClient {
             .await
             .map_err(|e| CalendarError::ApiError(format!("Failed to fetch events: {}", e)))?;
 
-        let calendar_config = self.config.calendars
+        let calendar_config = self
+            .config
+            .calendars
             .iter()
             .find(|cal| cal.id == calendar_id)
-            .ok_or_else(|| CalendarError::ConfigError(format!("Calendar config not found for ID: {}", calendar_id)))?;
+            .ok_or_else(|| {
+                CalendarError::ConfigError(format!(
+                    "Calendar config not found for ID: {}",
+                    calendar_id
+                ))
+            })?;
 
         let events = result.1.items.unwrap_or_default();
         let mut calendar_events = Vec::new();
@@ -122,15 +152,21 @@ impl CalendarClient {
         Ok(calendar_events)
     }
 
-    fn convert_event(&self, event: Event, calendar_config: &crate::config::CalendarConfig) -> Result<Option<CalendarEvent>> {
+    fn convert_event(
+        &self,
+        event: Event,
+        calendar_config: &crate::config::CalendarConfig,
+    ) -> Result<Option<CalendarEvent>> {
         let id = event.id.unwrap_or_default();
-        let title = event.summary.unwrap_or_else(|| "Untitled Event".to_string());
+        let title = event
+            .summary
+            .unwrap_or_else(|| "Untitled Event".to_string());
         let description = event.description;
 
         let (start_time, end_time, all_day) = if let Some(start) = event.start {
             if let Some(date_time) = &start.date_time {
                 let start_dt = date_time.with_timezone(&Local);
-                
+
                 let end_dt = if let Some(end) = event.end {
                     if let Some(end_date_time) = &end.date_time {
                         end_date_time.with_timezone(&Local)
@@ -140,12 +176,14 @@ impl CalendarClient {
                 } else {
                     start_dt + chrono::Duration::hours(1)
                 };
-                
+
                 (start_dt, end_dt, false)
             } else if let Some(date) = &start.date {
-                let start_dt = Local.from_local_datetime(&date.and_hms_opt(0, 0, 0).unwrap()).unwrap();
+                let start_dt = Local
+                    .from_local_datetime(&date.and_hms_opt(0, 0, 0).unwrap())
+                    .unwrap();
                 let end_dt = start_dt + chrono::Duration::days(1);
-                
+
                 (start_dt, end_dt, true)
             } else {
                 return Ok(None);
@@ -168,15 +206,19 @@ impl CalendarClient {
 
     pub async fn list_calendars(&self) -> Result<Vec<CalendarListEntry>> {
         let authenticator = self.auth_manager.get_authenticator().await?;
-        
+
         let https = HttpsConnectorBuilder::new()
             .with_native_roots()
-            .map_err(|e| CalendarError::ApiError(format!("Failed to build HTTPS connector: {}", e)))?
+            .map_err(|e| {
+                CalendarError::ApiError(format!("Failed to build HTTPS connector: {}", e))
+            })?
             .https_or_http()
             .enable_http1()
             .build();
-        
-        let client = hyper::Client::builder().build::<_, hyper::Body>(https);
+
+        let client =
+            hyper_util::client::legacy::Client::builder(hyper_util::rt::TokioExecutor::new())
+                .build(https);
         let hub = CalendarHub::new(client, authenticator);
 
         let result = hub
@@ -187,9 +229,5 @@ impl CalendarClient {
             .map_err(|e| CalendarError::ApiError(format!("Failed to list calendars: {}", e)))?;
 
         Ok(result.1.items.unwrap_or_default())
-    }
-
-    pub async fn clear_cache(&self) {
-        self.cache.clear().await;
     }
 }

@@ -7,18 +7,20 @@ authors = ["Thomas <thomas@example.com>"]
 license = "MIT"
 
 [dependencies]
-google-calendar3 = "5.0.5"
-yup-oauth2 = "10.0.1"
+google-calendar3 = "6.0"
+yup-oauth2 = "11.0"
 clap = { version = "4.5", features = ["derive"] }
-config = "0.14"
+config = "0.15"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
 moka = { version = "0.12", features = ["future"] }
 anyhow = "1.0"
-colored = "2.1"
-hyper = { version = "0.14", features = ["full"] }
-hyper-rustls = { version = "0.24", features = ["webpki-roots"] }
-dirs = "5.0"
+colored = "3.0.0"
+hyper = { version = "1.6", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+hyper-rustls = { version = "0.27", features = ["webpki-roots"] }
+dirs = "6.0"
 toml = "0.8"
 serde_json = "1.0"
+rustls = "0.23"

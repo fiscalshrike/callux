@@ -66,7 +66,7 @@ impl Default for Config {
 impl Config {
     pub fn load() -> Result<Self> {
         let config_path = Self::get_config_path()?;
-        
+
         if !config_path.exists() {
             let default_config = Self::default();
             default_config.save()?;
@@ -80,7 +80,7 @@ impl Config {
 
     pub fn save(&self) -> Result<()> {
         let config_path = Self::get_config_path()?;
-        
+
         if let Some(parent) = config_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -91,8 +91,8 @@ impl Config {
     }
 
     fn get_config_path() -> Result<PathBuf> {
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
+        let config_dir =
+            dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
         Ok(config_dir.join("callux").join("config.toml"))
     }
 

@@ -41,7 +41,7 @@ impl OutputFormatter {
 
     pub fn format_events(&self, events: &[CalendarEvent]) -> String {
         let limited_events: Vec<&CalendarEvent> = events.iter().take(self.max_events).collect();
-        
+
         match self.format {
             OutputFormat::Json => self.format_json(&limited_events),
             OutputFormat::Human => self.format_human(&limited_events),
@@ -62,7 +62,11 @@ impl OutputFormatter {
             let text = if next_event.all_day {
                 format!("{}", next_event.title)
             } else {
-                format!("{} {}", next_event.start_time.format("%H:%M"), next_event.title)
+                format!(
+                    "{} {}",
+                    next_event.start_time.format("%H:%M"),
+                    next_event.title
+                )
             };
 
             let tooltip = self.create_tooltip(events);
@@ -131,7 +135,12 @@ impl OutputFormatter {
                 }
                 output.push_str(&format!(
                     "{}\n",
-                    event.start_time.format("%A, %B %d, %Y").to_string().bright_blue().bold()
+                    event
+                        .start_time
+                        .format("%A, %B %d, %Y")
+                        .to_string()
+                        .bright_blue()
+                        .bold()
                 ));
                 current_date = event_date;
             }
@@ -145,7 +154,11 @@ impl OutputFormatter {
             } else {
                 output.push_str(&format!(
                     "  {}: {}\n",
-                    event.start_time.format(&self.date_format).to_string().bright_green(),
+                    event
+                        .start_time
+                        .format(&self.date_format)
+                        .to_string()
+                        .bright_green(),
                     event.title.white()
                 ));
             }
@@ -160,7 +173,10 @@ impl OutputFormatter {
 
         for event in events {
             let date_key = event.start_time.format("%Y-%m-%d").to_string();
-            events_by_date.entry(date_key).or_insert_with(Vec::new).push(event);
+            events_by_date
+                .entry(date_key)
+                .or_insert_with(Vec::new)
+                .push(event);
         }
 
         let mut sorted_dates: Vec<String> = events_by_date.keys().cloned().collect();
@@ -174,7 +190,7 @@ impl OutputFormatter {
             let events_on_date = &events_by_date[date];
             let parsed_date = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").unwrap();
             let formatted_date = parsed_date.format("%A, %B %d");
-            
+
             tooltip.push_str(&format!("{}:\n", formatted_date));
 
             for event in events_on_date {
